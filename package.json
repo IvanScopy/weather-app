@@ -1,10 +1,40 @@
 {
-  "dependencies": {
-    "@react-spring/web": "^9.5.5",
-    "@react-three/drei": "^9.80.0",
-    "@react-three/fiber": "^8.13.0",
-    "@splinetool/react-spline": "^4.0.0",
-    "gsap": "^3.12.4",
-    "three": "^0.174.0"
+  "name": "weather-app",
+  "version": "1.0.0",
+  "description": "Modern weather app with air quality monitoring",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "test": "cd backend && npm test && cd ../frontend && npm test"
+  },
+  "keywords": [
+    "weather",
+    "react",
+    "nodejs",
+    "mongodb",
+    "air-quality",
+    "forecast"
+  ],
+  "author": "IvanScopy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IvanScopy/weather-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IvanScopy/weather-app/issues"
+  },
+  "homepage": "https://github.com/IvanScopy/weather-app#readme",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
   }
 }
