@@ -1,11 +1,51 @@
 const axios = require('axios');
 const Weather = require('../models/Weather');
 
+// Cache cho kết quả tìm kiếm để tối ưu hiệu suất
+const searchCache = new Map();
+const CACHE_DURATION = 1000 * 60 * 60; // 1 giờ
+
 // Hàm chuyển đổi tiếng Việt có dấu sang không dấu
 const removeDiacritics = (str) => {
   return str.normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[-]/g, '') // Loại bỏ dấu
             .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+};
+
+// Hàm tìm kiếm thành phố từ WeatherAPI
+const searchCitiesFromAPI = async (keyword) => {
+  try {
+    const response = await axios.get(`http://api.weatherapi.com/v1/search.json`, {
+      params: {
+        key: process.env.WEATHERAPI_KEY,
+        q: keyword,
+        type: 'city'
+      }
+    });
+    return response.data.map(city => ({
+      name: `${city.name}, ${city.country}`,
+      normalized: `${city.lat},${city.lon}`,
+      region: city.region
+    }));
+  } catch (error) {
+    console.error('Error in WeatherAPI search:', error);
+    return [];
+  }
+};
+
+// Hàm tính độ tương đồng giữa hai chuỗi
+const similarity = (s1, s2) => {
+  const normalize = str => removeDiacritics(str.toLowerCase().trim());
+  const str1 = normalize(s1);
+  const str2 = normalize(s2);
+  
+  if (str2.includes(str1)) {
+    if (str2.startsWith(str1)) {
+      return 1;
+    }
+    return 0.8;
+  }
+  return 0;
 };
 
 // Danh sách các thành phố lớn - ánh xạ từ tiếng Việt sang tiếng Anh
@@ -60,23 +100,36 @@ const cityMapping = {
   'hậu giang': 'hau giang',
 };
 
-// Hàm chuyển đổi tên thành phố sang định dạng API hiểu được
 const convertCityName = (city) => {
-  // Chuyển thành chữ thường để so sánh
   const cityLower = city.toLowerCase().trim();
   
-  // Kiểm tra trong danh sách ánh xạ
+  // Kiểm tra nếu là tọa độ
+  if (city.includes(',')) {
+    return city;
+  }
+  
   if (cityMapping[cityLower]) {
     return cityMapping[cityLower];
   }
   
-  // Nếu không có trong danh sách, loại bỏ dấu
+  const bestMatch = Object.entries(cityMapping)
+    .map(([vn, en]) => ({
+      name: vn,
+      en: en,
+      score: similarity(cityLower, vn)
+    }))
+    .filter(match => match.score > 0)
+    .sort((a, b) => b.score - a.score)[0];
+
+  if (bestMatch) {
+    return bestMatch.en;
+  }
+  
   return removeDiacritics(cityLower);
 };
 
 // Hàm lấy dữ liệu thời tiết hiện tại từ WeatherAPI
 const getCurrentWeather = async (city) => {
-  // Chuyển đổi tên thành phố
   const convertedCity = convertCityName(city);
   
   try {
@@ -95,15 +148,13 @@ const getCurrentWeather = async (city) => {
   }
 };
 
-// API Controller để lấy và lưu dữ liệu thời tiết
+// API Controllers
 exports.getWeatherData = async (req, res) => {
   const { city } = req.params;
   
   try {
-    // Lấy dữ liệu từ WeatherAPI
     const weatherData = await getCurrentWeather(city);
     
-    // Tạo đối tượng dữ liệu để lưu vào MongoDB
     const newWeatherData = new Weather({
       city: weatherData.location.name,
       country: weatherData.location.country,
@@ -123,10 +174,8 @@ exports.getWeatherData = async (req, res) => {
       last_updated: new Date(weatherData.current.last_updated_epoch * 1000)
     });
     
-    // Lưu vào MongoDB
     await newWeatherData.save();
     
-    // Trả về dữ liệu
     res.json({
       city: newWeatherData.city,
       country: newWeatherData.country,
@@ -147,12 +196,10 @@ exports.getWeatherData = async (req, res) => {
   }
 };
 
-// API Controller để lấy dữ liệu dự báo
 exports.getWeatherForecast = async (req, res) => {
   const { city } = req.params;
-  const days = req.query.days || 3; // Mặc định lấy 3 ngày theo giới hạn của Free tier
+  const days = req.query.days || 3;
   
-  // Chuyển đổi tên thành phố
   const convertedCity = convertCityName(city);
   
   try {
@@ -196,7 +243,7 @@ exports.getWeatherForecast = async (req, res) => {
 exports.getWeatherForecastByCoords = async (req, res) => {
   try {
     const { lat, lon } = req.query;
-    const days = Number(req.query.days || 3); // Chuyển đổi thành số và mặc định là 3 theo giới hạn Free tier
+    const days = Number(req.query.days || 3);
     
     if (!lat || !lon) {
       return res.status(400).json({
@@ -205,29 +252,15 @@ exports.getWeatherForecastByCoords = async (req, res) => {
       });
     }
     
-    console.log(`Fetching forecast for coordinates: lat=${lat}, lon=${lon}`);
-    console.log(`Requesting forecast with days=${days}`);
-
-    // Gọi API thời tiết với tọa độ
-    const weatherApiKey = process.env.WEATHERAPI_KEY || process.env.WEATHER_API_KEY;
-    console.log('Using WeatherAPI key:', weatherApiKey ? 'Available' : 'Missing');
-    
     const apiResponse = await axios.get('http://api.weatherapi.com/v1/forecast.json', {
       params: {
-        key: weatherApiKey,
+        key: process.env.WEATHERAPI_KEY,
         q: `${lat},${lon}`,
         days: days,
         aqi: 'no'
       }
     });
     
-    console.log('WeatherAPI Response:', {
-      location: apiResponse.data.location,
-      forecast_days: apiResponse.data.forecast.forecastday.length,
-      days_requested: days
-    });
-    
-    // Xử lý và chuyển đổi dữ liệu sang định dạng chung
     const forecastData = {
       city: apiResponse.data.location.name,
       country: apiResponse.data.location.country,
@@ -244,13 +277,52 @@ exports.getWeatherForecastByCoords = async (req, res) => {
       }))
     };
     
-    console.log(`Returning forecast data with ${forecastData.forecast.length} days`);
     res.json(forecastData);
   } catch (error) {
     console.error('Error in forecast by coords:', error.response?.data || error.message);
     res.status(500).json({
       message: 'Không thể lấy dữ liệu dự báo thời tiết',
       error: error.message
+    });
+  }
+};
+
+// API Controller để tìm kiếm gợi ý thành phố
+exports.suggestCities = async (req, res) => {
+  const { keyword } = req.query;
+  
+  try {
+    console.log('Received suggestion request with keyword:', keyword);
+    
+    if (!keyword || keyword.length < 2) {
+      return res.json({ suggestions: [] });
+    }
+
+    // Kiểm tra cache
+    const cacheKey = keyword.toLowerCase();
+    const cachedResult = searchCache.get(cacheKey);
+    if (cachedResult && (Date.now() - cachedResult.timestamp < CACHE_DURATION)) {
+      console.log('Returning cached results for:', keyword);
+      return res.json({ suggestions: cachedResult.data });
+    }
+
+    // Tìm kiếm từ API
+    const apiResults = await searchCitiesFromAPI(keyword);
+
+    // Lưu vào cache và trả về kết quả
+    searchCache.set(cacheKey, {
+      data: apiResults,
+      timestamp: Date.now()
+    });
+
+    console.log('Found suggestions:', apiResults);
+    res.json({ suggestions: apiResults });
+    
+  } catch (error) {
+    console.error('Error in city suggestion:', error);
+    res.status(500).json({
+      error: 'Không thể xử lý yêu cầu tìm kiếm',
+      message: error.message
     });
   }
 };

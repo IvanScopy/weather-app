@@ -11,4 +11,7 @@ router.get('/forecast/coords', weatherController.getWeatherForecastByCoords);
 // Route lấy dữ liệu dự báo theo tên thành phố
 router.get('/forecast/:city', weatherController.getWeatherForecast);
 
+// Route tìm kiếm gợi ý thành phố
+router.get('/suggest', weatherController.suggestCities);
+
 module.exports = router;
