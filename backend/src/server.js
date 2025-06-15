@@ -19,17 +19,19 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
-app.use(express.json());
 
 // Import routes
 const weatherRoutes = require('./routes/weatherRoutes');
 const airQualityRoutes = require('./routes/airQualityRoutes');
 const combinedWeatherRoutes = require('./routes/combinedWeatherRoutes');
 
-// Kết nối MongoDB
+// Kết nối MongoDB với handling lỗi tốt hơn
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('Could not connect to MongoDB:', err));
+  .catch(err => {
+    console.warn('MongoDB connection failed, continuing without database:', err.message);
+    console.log('Application will run in demo mode without persistent data storage.');
+  });
 
 // Sử dụng routes
 app.use('/api/weather', weatherRoutes);

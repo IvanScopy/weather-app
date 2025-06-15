@@ -326,3 +326,106 @@ exports.suggestCities = async (req, res) => {
     });
   }
 };
+
+// API Controller để lấy thời tiết chi tiết theo giờ
+exports.getHourlyWeather = async (req, res) => {
+  const { city } = req.params;
+  const convertedCity = convertCityName(city);
+  
+  try {
+    console.log(`Fetching hourly weather for: ${convertedCity}`);
+    
+    const response = await axios.get(`http://api.weatherapi.com/v1/forecast.json`, {
+      params: {
+        key: process.env.WEATHERAPI_KEY,
+        q: convertedCity,
+        days: 1, // Chỉ lấy ngày hôm nay
+        aqi: 'no',
+        alerts: 'no'
+      }
+    });
+    
+    const today = response.data.forecast.forecastday[0];
+    const hourlyData = today.hour.map(hour => ({
+      time: hour.time,
+      temperature: hour.temp_c,
+      feels_like: hour.feelslike_c,
+      condition: hour.condition,
+      humidity: hour.humidity,
+      wind_speed: hour.wind_kph,
+      wind_direction: hour.wind_dir,
+      pressure: hour.pressure_mb,
+      precip: hour.precip_mm,
+      chance_of_rain: hour.chance_of_rain,
+      uv: hour.uv,
+      is_day: hour.is_day
+    }));
+    
+    res.json({
+      city: response.data.location.name,
+      country: response.data.location.country,
+      date: today.date,
+      hourly: hourlyData
+    });
+  } catch (error) {
+    console.error('Error getting hourly weather data:', error);
+    res.status(500).json({ 
+      error: 'Không thể lấy dữ liệu thời tiết theo giờ',
+      message: error.message 
+    });
+  }
+};
+
+// API Controller để lấy thời tiết theo giờ bằng tọa độ
+exports.getHourlyWeatherByCoords = async (req, res) => {
+  try {
+    const { lat, lon } = req.query;
+    
+    if (!lat || !lon) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp tọa độ vĩ độ (lat) và kinh độ (lon)'
+      });
+    }
+    
+    const apiResponse = await axios.get('http://api.weatherapi.com/v1/forecast.json', {
+      params: {
+        key: process.env.WEATHERAPI_KEY,
+        q: `${lat},${lon}`,
+        days: 1,
+        aqi: 'no'
+      }
+    });
+    
+    const today = apiResponse.data.forecast.forecastday[0];
+    const hourlyData = today.hour.map(hour => ({
+      time: hour.time,
+      temperature: hour.temp_c,
+      feels_like: hour.feelslike_c,
+      condition: hour.condition,
+      humidity: hour.humidity,
+      wind_speed: hour.wind_kph,
+      wind_direction: hour.wind_dir,
+      pressure: hour.pressure_mb,
+      precip: hour.precip_mm,
+      chance_of_rain: hour.chance_of_rain,
+      uv: hour.uv,
+      is_day: hour.is_day
+    }));
+    
+    res.json({
+      city: apiResponse.data.location.name,
+      country: apiResponse.data.location.country,
+      date: today.date,
+      hourly: hourlyData
+    });
+  } catch (error) {
+    console.error('Error in hourly weather by coords:', error.response?.data || error.message);
+    res.status(500).json({
+      message: 'Không thể lấy dữ liệu thời tiết theo giờ',
+      error: error.message
+    });
+  }
+};
+
+module.exports = exports;
